@@ -159,7 +159,7 @@ export default function InventarioPage() {
                   <Label htmlFor="category">Categoría</Label>
                   <Select 
                     value={formData.category} 
-                    onValueChange={(val) => setFormData({...formData, category: val})}
+                    onValueChange={(val) => setFormData({...formData, category: val || ''})}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona..." />
