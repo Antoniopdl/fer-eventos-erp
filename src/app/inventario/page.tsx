@@ -131,11 +131,9 @@ export default function InventarioPage() {
         
         {/* Modal de Nuevo Artículo */}
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto gap-2">
-              <Plus className="w-4 h-4" />
-              Agregar Artículo
-            </Button>
+          <DialogTrigger render={<Button className="w-full sm:w-auto gap-2" />}>
+            <Plus className="w-4 h-4" />
+            Agregar Artículo
           </DialogTrigger>
           <DialogContent className="sm:max-w-[425px]">
             <form onSubmit={handleSubmit}>
