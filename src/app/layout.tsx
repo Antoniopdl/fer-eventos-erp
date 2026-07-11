@@ -12,12 +12,15 @@ export const metadata: Metadata = {
   title: "Fer Eventos ERP",
   description: "Sistema de administración para rentas de mobiliario",
   manifest: "/manifest.json",
-  themeColor: "#2563eb",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Fer Eventos",
   },
+};
+
+export const viewport = {
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({
@@ -30,7 +33,7 @@ export default function RootLayout({
       lang="es"
       className={`${inter.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <Shell>{children}</Shell>
       </body>
     </html>
