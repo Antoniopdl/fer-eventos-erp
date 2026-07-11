@@ -316,17 +316,23 @@ export default function InventarioPage() {
                       </div>
                       <div className="space-y-2">
                         <Label>Categoría</Label>
-                        <Select value={itemFormData.category} onValueChange={(val) => setItemFormData({...itemFormData, category: val || ''})}>
-                          <SelectTrigger className="h-12 text-base rounded-xl"><SelectValue placeholder="Selecciona..." /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Sillas">Sillas</SelectItem>
-                            <SelectItem value="Mesas">Mesas</SelectItem>
-                            <SelectItem value="Carpas">Carpas</SelectItem>
-                            <SelectItem value="Mantelería">Mantelería</SelectItem>
-                            <SelectItem value="Decoración">Decoración</SelectItem>
-                            <SelectItem value="Varios">Varios</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Input 
+                          list="category-options"
+                          placeholder="Ej. Sillas, Mesas, Manteles..." 
+                          className="h-12 text-base rounded-xl bg-slate-50" 
+                          value={itemFormData.category} 
+                          onChange={(e) => setItemFormData({...itemFormData, category: e.target.value})} 
+                        />
+                        <datalist id="category-options">
+                          <option value="Sillas" />
+                          <option value="Mesas" />
+                          <option value="Carpas" />
+                          <option value="Manteles" />
+                          <option value="Sobremanteles" />
+                          <option value="Decoración" />
+                          <option value="Luz y Sonido" />
+                          <option value="Varios" />
+                        </datalist>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -504,17 +510,13 @@ export default function InventarioPage() {
                           <div key={index} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
                             <div className="flex-1 space-y-1">
                               <p className="text-xs text-slate-500 font-semibold uppercase">Categoría</p>
-                              <Select value={req.category} onValueChange={(val) => updateKitRequirement(index, 'category', val)}>
-                                <SelectTrigger className="h-10 border-0 bg-slate-50"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Sillas">Sillas</SelectItem>
-                                  <SelectItem value="Mesas">Mesas</SelectItem>
-                                  <SelectItem value="Carpas">Carpas</SelectItem>
-                                  <SelectItem value="Mantelería">Mantelería</SelectItem>
-                                  <SelectItem value="Decoración">Decoración</SelectItem>
-                                  <SelectItem value="Varios">Varios</SelectItem>
-                                </SelectContent>
-                              </Select>
+                              <Input 
+                                list="category-options"
+                                placeholder="Escribe..."
+                                className="h-10 border-slate-200 bg-slate-50" 
+                                value={req.category} 
+                                onChange={(e) => updateKitRequirement(index, 'category', e.target.value)} 
+                              />
                             </div>
                             
                             <div className="w-24 space-y-1">

@@ -1,9 +1,10 @@
 import React from 'react';
 import Link from 'next/link';
-import { Home, Calendar, Package, Truck, DollarSign, Settings } from 'lucide-react';
+import { Home, Calendar, Package, Truck, DollarSign, Settings, Users } from 'lucide-react';
 
 const navItems = [
   { name: 'Inicio', href: '/', icon: Home },
+  { name: 'Clientes', href: '/clientes', icon: Users },
   { name: 'Calendario', href: '/calendario', icon: Calendar },
   { name: 'Logística', href: '/logistica', icon: Truck },
   { name: 'Inventario', href: '/inventario', icon: Package },
