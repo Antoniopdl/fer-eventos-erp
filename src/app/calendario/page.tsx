@@ -197,6 +197,10 @@ export default function CalendarioPage() {
     }));
   };
 
+  const removeFromCart = (uid: string) => {
+    setCart(cart.filter(c => c.uid !== uid));
+  };
+
   const handleFinishKit = () => {
     if (!activeKit) return;
     const missing = activeKit.kit_requirements.find(req => !req.is_optional && !kitSelections[req.id]);
