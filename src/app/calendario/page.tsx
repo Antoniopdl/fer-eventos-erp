@@ -445,7 +445,7 @@ export default function CalendarioPage() {
                           {!activeKit ? (
                             <div className="space-y-3">
                               {kits.map(kit => (
-                                <div key={kit.id} className="bg-white p-4 rounded-xl border shadow-sm cursor-pointer hover:border-blue-300" onClick={() => handleStartKit(kit)}>
+                                <div key={kit.id} className="bg-white p-4 rounded-xl border shadow-sm cursor-pointer hover:border-blue-300" onClick={() => setActiveKit(kit)}>
                                   <div className="flex justify-between items-start mb-2">
                                     <h4 className="font-bold text-slate-800">{kit.name}</h4>
                                     <span className="font-bold text-blue-600">${kit.price}</span>

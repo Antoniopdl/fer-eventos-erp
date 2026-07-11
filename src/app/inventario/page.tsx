@@ -521,7 +521,7 @@ export default function InventarioPage() {
                             
                             <div className="w-24 space-y-1">
                               <p className="text-xs text-slate-500 font-semibold uppercase">Cant.</p>
-                              <Input type="number" min="1" required className="h-10 border-0 bg-slate-50" value={req.quantity} onChange={(e) => updateKitRequirement(index, 'quantity', parseInt(e.target.value))} />
+                              <Input type="number" min="1" required className="h-10 border-0 bg-slate-50" value={req.quantity || ''} onChange={(e) => updateKitRequirement(index, 'quantity', parseInt(e.target.value) || 0)} />
                             </div>
 
                             <Button type="button" variant="ghost" size="icon" onClick={() => removeKitRequirement(index)} className="mt-5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full" disabled={kitRequirements.length === 1}>
