@@ -466,7 +466,7 @@ export default function InventarioPage() {
                 <span className="sm:hidden">Armar</span>
               </DialogTrigger>
               <DialogContent className="sm:max-w-xl w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-2xl p-0 overflow-hidden flex flex-col">
-                <form onSubmit={handleKitSubmit} className="flex flex-col h-full">
+                <form onSubmit={handleKitSubmit} className="flex flex-col h-full overflow-hidden">
                   <div className="p-6 pb-4 border-b">
                     <DialogTitle className="text-xl">{editingKitId ? 'Editar Paquete' : 'Armar Nuevo Paquete'}</DialogTitle>
                     <DialogDescription className="mt-2">Define el precio especial y qué artículos lo componen.</DialogDescription>
