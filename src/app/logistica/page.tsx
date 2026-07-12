@@ -126,12 +126,35 @@ export default function LogisticaPage() {
   };
 
   const geocodeAddress = async (address: string) => {
-    const query = encodeURIComponent(address + ', Sinaloa, Mexico');
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
-    const data = await res.json();
-    if (data && data.length > 0) {
-      return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    // 1. Detectar si el usuario pegó coordenadas directamente (Ej. "24.123, -107.123" o "24.123 -107.123")
+    const coordsMatch = address.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+    if (coordsMatch) {
+      return { lat: parseFloat(coordsMatch[1]), lon: parseFloat(coordsMatch[2]) };
     }
+
+    try {
+      // 2. Intentar busqueda estricta con Sinaloa, Mexico
+      let query = encodeURIComponent(address + ', Sinaloa, Mexico');
+      let res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
+      let data = await res.json();
+      
+      if (data && data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+      }
+
+      // 3. Si falla, intentar busqueda suelta sin filtros adicionales
+      await new Promise(r => setTimeout(r, 1000)); // Respect nominatim limit of 1 req/sec
+      query = encodeURIComponent(address);
+      res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
+      data = await res.json();
+      
+      if (data && data.length > 0) {
+        return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+      }
+    } catch (e) {
+      console.error('Geocoding error:', e);
+    }
+    
     return null;
   };
 
