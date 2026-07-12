@@ -37,7 +37,7 @@ type Rental = {
   delivery_address: string;
   status: string;
   total_amount: number;
-  clients: { name: string, phone: string };
+  clients: { full_name: string, phone: string };
 };
 
 export default function LogisticaPage() {
@@ -92,7 +92,7 @@ export default function LogisticaPage() {
       const [vehRes, setRes, rentRes] = await Promise.all([
         supabase.from('vehicles').select('*').order('name'),
         supabase.from('logistics_settings').select('*').limit(1).single(),
-        supabase.from('orders').select('*, clients(name, phone)').neq('delivery_address', '').not('delivery_address', 'is', null).order('event_date', { ascending: true })
+        supabase.from('orders').select('*, clients(full_name, phone)').neq('delivery_address', '').not('delivery_address', 'is', null).order('event_date', { ascending: true })
       ]);
       if (setRes.error && setRes.error.code !== 'PGRST116') {
         console.error('Error fetching settings:', setRes.error);
@@ -100,6 +100,9 @@ export default function LogisticaPage() {
       }
       if (vehRes.error) {
         console.error('Error fetching vehicles:', vehRes.error);
+      }
+      if (rentRes.error) {
+        console.error('Error fetching orders:', rentRes.error);
       }
 
       if (vehRes.data) setVehicles(vehRes.data);
@@ -316,7 +319,7 @@ export default function LogisticaPage() {
         if (coords) {
           waypoints.push({ lon: coords.lon, lat: coords.lat, rental: rent });
         } else {
-          alert(`No se encontró dirección para el cliente ${rent.clients?.name || 'Desconocido'}. Se omitirá de la ruta.`);
+          alert(`No se encontró dirección para el cliente ${rent.clients?.full_name || 'Desconocido'}. Se omitirá de la ruta.`);
         }
         await new Promise(r => setTimeout(r, 1000));
       }
@@ -515,7 +518,7 @@ export default function LogisticaPage() {
                           }}
                         />
                         <div>
-                          <p className="font-bold text-slate-800">{rental.clients?.name || 'Cliente'}</p>
+                          <p className="font-bold text-slate-800">{rental.clients?.full_name || 'Cliente'}</p>
                           <p className="text-sm text-slate-500 flex items-center gap-1 mt-1"><MapPin className="w-3 h-3"/> {rental.delivery_address}</p>
                           <p className="text-xs text-blue-600 font-medium mt-1">
                             {new Date(rental.event_date).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'short' })}
@@ -569,7 +572,7 @@ export default function LogisticaPage() {
                             {index + 1}
                           </div>
                           <div className="pt-1">
-                            <p className="font-bold text-blue-700">{node.rental.clients?.name}</p>
+                            <p className="font-bold text-blue-700">{node.rental.clients?.full_name}</p>
                             <p className="text-sm text-slate-600">{node.rental.delivery_address}</p>
                             <Badge variant="outline" className="mt-2 text-xs bg-white">{new Date(node.rental.event_date).toLocaleDateString()}</Badge>
                           </div>
