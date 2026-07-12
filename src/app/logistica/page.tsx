@@ -94,14 +94,25 @@ export default function LogisticaPage() {
         supabase.from('logistics_settings').select('*').limit(1).single(),
         supabase.from('rentals').select('*, clients(name, phone)').in('status', ['Confirmada', 'Entregado']).not('address', 'is', null).order('event_date', { ascending: true })
       ]);
-      
+      if (setRes.error && setRes.error.code !== 'PGRST116') {
+        console.error('Error fetching settings:', setRes.error);
+        alert('Error cargando configuración: ' + setRes.error.message);
+      }
+      if (vehRes.error) {
+        console.error('Error fetching vehicles:', vehRes.error);
+      }
+
       if (vehRes.data) setVehicles(vehRes.data);
       if (rentRes.data) setRentals(rentRes.data);
       if (setRes.data) {
         setSettings(setRes.data);
-      } else {
+      } else if (!setRes.error || setRes.error.code === 'PGRST116') {
         // If settings don't exist, create default
-        const { data: newSettings } = await supabase.from('logistics_settings').insert([{}]).select().single();
+        const { data: newSettings, error: insertErr } = await supabase.from('logistics_settings').insert([{}]).select().single();
+        if (insertErr) {
+          console.error('Error creating default settings:', insertErr);
+          // Don't alert here to avoid spamming, but log it
+        }
         if (newSettings) setSettings(newSettings);
       }
     } catch (error) {
@@ -152,10 +163,20 @@ export default function LogisticaPage() {
         warehouse_lng: coords.lon
       };
 
+      let saveError = null;
       if (!settings) {
-        await supabase.from('logistics_settings').insert([updates]);
+        const { error } = await supabase.from('logistics_settings').insert([updates]);
+        saveError = error;
       } else {
-        await supabase.from('logistics_settings').update(updates).eq('id', settings.id);
+        const { error } = await supabase.from('logistics_settings').update(updates).eq('id', settings.id);
+        saveError = error;
+      }
+      
+      if (saveError) {
+        console.error('Supabase Save Error:', saveError);
+        alert('Error al guardar en base de datos: ' + saveError.message);
+        setIsSaving(false);
+        return;
       }
       
       await fetchData();
