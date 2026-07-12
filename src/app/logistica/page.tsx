@@ -123,10 +123,9 @@ export default function LogisticaPage() {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!settings) return;
     setIsSaving(true);
     try {
-      let coords = { lat: settings.warehouse_lat, lon: settings.warehouse_lng };
+      let coords = { lat: settings?.warehouse_lat || null, lon: settings?.warehouse_lng || null };
       
       // Si el usuario ingresó manualmente coordenadas numéricas, las usamos. Si no, geocodificamos.
       const manualLat = parseFloat(settingsForm.warehouse_lat);
@@ -153,7 +152,12 @@ export default function LogisticaPage() {
         warehouse_lng: coords.lon
       };
 
-      await supabase.from('logistics_settings').update(updates).eq('id', settings.id);
+      if (!settings) {
+        await supabase.from('logistics_settings').insert([updates]);
+      } else {
+        await supabase.from('logistics_settings').update(updates).eq('id', settings.id);
+      }
+      
       await fetchData();
       setOpenSettingsModal(false);
     } catch (error) {
@@ -677,11 +681,21 @@ export default function LogisticaPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Latitud (Opcional)</Label>
-                    <Input type="number" step="any" placeholder="Ej. 24.802" className="h-12 rounded-xl" value={settingsForm.warehouse_lat} onChange={e => setSettingsForm({...settingsForm, warehouse_lat: e.target.value})} />
+                    <Input type="text" placeholder="Ej. 24.802" className="h-12 rounded-xl" value={settingsForm.warehouse_lat} onChange={e => {
+                      const val = e.target.value;
+                      if (val.includes(',')) {
+                        const parts = val.split(',');
+                        if (parts.length >= 2) {
+                          setSettingsForm({...settingsForm, warehouse_lat: parts[0].trim(), warehouse_lng: parts[1].trim()});
+                          return;
+                        }
+                      }
+                      setSettingsForm({...settingsForm, warehouse_lat: val});
+                    }} />
                   </div>
                   <div className="space-y-2">
                     <Label>Longitud (Opcional)</Label>
-                    <Input type="number" step="any" placeholder="Ej. -107.39" className="h-12 rounded-xl" value={settingsForm.warehouse_lng} onChange={e => setSettingsForm({...settingsForm, warehouse_lng: e.target.value})} />
+                    <Input type="text" placeholder="Ej. -107.39" className="h-12 rounded-xl" value={settingsForm.warehouse_lng} onChange={e => setSettingsForm({...settingsForm, warehouse_lng: e.target.value})} />
                   </div>
                 </div>
                 <p className="text-xs text-slate-500">Si dejas Latitud y Longitud vacíos, el sistema intentará calcularlos automáticamente buscando la dirección.</p>
