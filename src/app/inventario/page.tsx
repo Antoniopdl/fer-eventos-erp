@@ -352,7 +352,7 @@ export default function InventarioPage() {
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                 <Input type="search" placeholder="Buscar sillas, mesas..." className="pl-10 h-10 rounded-full bg-slate-100 border-transparent focus:bg-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <Select value={categoryFilter} onValueChange={(val) => setCategoryFilter(val || 'Todas')}>
                 <SelectTrigger className="w-[140px] sm:w-[180px] h-10 rounded-full bg-slate-100 border-transparent focus:bg-white">
                   <SelectValue placeholder="Categoría" />
                 </SelectTrigger>
