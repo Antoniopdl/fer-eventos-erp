@@ -47,6 +47,13 @@ export default function InventarioPage() {
   
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'table'>('grid-large');
   
+  // Estado Formulario Categorías
+  const [openCategoryEditModal, setOpenCategoryEditModal] = useState(false);
+  const [openCategoryDeleteModal, setOpenCategoryDeleteModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [reassignCategoryName, setReassignCategoryName] = useState('');
+  
   // Estado Formulario Artículos
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -263,6 +270,44 @@ export default function InventarioPage() {
     setOpenKitModal(true);
   };
 
+  const handleRenameCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName || newCategoryName === selectedCategory) return;
+    setIsSubmittingItem(true);
+    try {
+      const { error: invErr } = await supabase.from('inventory').update({ category: newCategoryName }).eq('category', selectedCategory);
+      if (invErr) throw invErr;
+      const { error: kitErr } = await supabase.from('kit_requirements').update({ category: newCategoryName }).eq('category', selectedCategory);
+      if (kitErr) throw kitErr;
+      setOpenCategoryEditModal(false);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      alert('Error renombrando categoría.');
+    } finally {
+      setIsSubmittingItem(false);
+    }
+  };
+
+  const handleDeleteCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reassignCategoryName || reassignCategoryName === selectedCategory) return;
+    setIsSubmittingItem(true);
+    try {
+      const { error: invErr } = await supabase.from('inventory').update({ category: reassignCategoryName }).eq('category', selectedCategory);
+      if (invErr) throw invErr;
+      const { error: kitErr } = await supabase.from('kit_requirements').update({ category: reassignCategoryName }).eq('category', selectedCategory);
+      if (kitErr) throw kitErr;
+      setOpenCategoryDeleteModal(false);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      alert('Error eliminando categoría.');
+    } finally {
+      setIsSubmittingItem(false);
+    }
+  };
+
   const uniqueCategories = Array.from(new Set([
     "Sillas", "Mesas", "Carpas", "Manteles", "Sobremanteles", "Decoración", "Luz y Sonido", "Varios",
     ...items.map(item => item.category)
@@ -281,9 +326,10 @@ export default function InventarioPage() {
 
       <Tabs defaultValue="articulos" className="w-full">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <TabsList className="grid w-full sm:w-[400px] grid-cols-2">
+          <TabsList className="grid w-full sm:w-[500px] grid-cols-3">
             <TabsTrigger value="articulos">Artículos Sueltos</TabsTrigger>
-            <TabsTrigger value="paquetes">Paquetes (Kits)</TabsTrigger>
+            <TabsTrigger value="paquetes">Paquetes</TabsTrigger>
+            <TabsTrigger value="categorias">Categorías</TabsTrigger>
           </TabsList>
         </div>
 
@@ -584,6 +630,90 @@ export default function InventarioPage() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* -------------------- TAB: CATEGORIAS -------------------- */}
+        <TabsContent value="categorias" className="space-y-6 m-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {uniqueCategories.map(cat => {
+              const catItems = items.filter(i => i.category === cat);
+              return (
+                <Card key={cat} className="border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl overflow-hidden">
+                  <CardContent className="p-5 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-lg text-slate-800">{cat}</h3>
+                      <p className="text-sm text-slate-500">{catItems.length} artículos</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="rounded-full" onClick={() => {
+                        setSelectedCategory(cat);
+                        setNewCategoryName(cat);
+                        setOpenCategoryEditModal(true);
+                      }}>
+                        Editar
+                      </Button>
+                      <Button variant="destructive" size="icon-sm" className="w-9 h-9 rounded-full" onClick={() => {
+                        setSelectedCategory(cat);
+                        setReassignCategoryName(uniqueCategories.find(c => c !== cat) || '');
+                        setOpenCategoryDeleteModal(true);
+                      }}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <Dialog open={openCategoryEditModal} onOpenChange={setOpenCategoryEditModal}>
+            <DialogContent className="sm:max-w-md bg-white p-6 rounded-2xl">
+              <DialogTitle>Renombrar Categoría</DialogTitle>
+              <DialogDescription>
+                Esto actualizará automáticamente la categoría de todos los artículos que pertenecen a "{selectedCategory}".
+              </DialogDescription>
+              <form onSubmit={handleRenameCategory} className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label>Nuevo Nombre</Label>
+                  <Input required className="h-12 rounded-xl" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button type="button" variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setOpenCategoryEditModal(false)}>Cancelar</Button>
+                  <Button type="submit" disabled={isSubmittingItem} className="flex-1 h-12 rounded-xl bg-blue-600 text-white">
+                    {isSubmittingItem ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null} Guardar
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={openCategoryDeleteModal} onOpenChange={setOpenCategoryDeleteModal}>
+            <DialogContent className="sm:max-w-md bg-white p-6 rounded-2xl">
+              <DialogTitle className="text-red-600">Eliminar Categoría</DialogTitle>
+              <DialogDescription>
+                Estás a punto de eliminar la categoría "{selectedCategory}". Selecciona a qué categoría se moverán los artículos huérfanos.
+              </DialogDescription>
+              <form onSubmit={handleDeleteCategory} className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label>Reasignar a</Label>
+                  <Select value={reassignCategoryName} onValueChange={setReassignCategoryName}>
+                    <SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Selecciona categoría destino" /></SelectTrigger>
+                    <SelectContent>
+                      {uniqueCategories.filter(c => c !== selectedCategory).map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button type="button" variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => setOpenCategoryDeleteModal(false)}>Cancelar</Button>
+                  <Button type="submit" disabled={isSubmittingItem || !reassignCategoryName} className="flex-1 h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white">
+                    {isSubmittingItem ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null} Eliminar y Reasignar
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </div>
