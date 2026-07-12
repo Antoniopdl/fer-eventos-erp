@@ -265,7 +265,7 @@ export default function InventarioPage() {
 
   const uniqueCategories = Array.from(new Set([
     "Sillas", "Mesas", "Carpas", "Manteles", "Sobremanteles", "Decoración", "Luz y Sonido", "Varios",
-    ...inventory.map(item => item.category)
+    ...items.map(item => item.category)
   ])).sort();
 
   return (
