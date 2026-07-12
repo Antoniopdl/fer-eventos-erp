@@ -696,7 +696,7 @@ export default function InventarioPage() {
               <form onSubmit={handleDeleteCategory} className="space-y-4 mt-4">
                 <div className="space-y-2">
                   <Label>Reasignar a</Label>
-                  <Select value={reassignCategoryName} onValueChange={setReassignCategoryName}>
+                  <Select value={reassignCategoryName} onValueChange={(val) => setReassignCategoryName(val || '')}>
                     <SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Selecciona categoría destino" /></SelectTrigger>
                     <SelectContent>
                       {uniqueCategories.filter(c => c !== selectedCategory).map(c => (
