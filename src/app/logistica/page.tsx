@@ -51,6 +51,8 @@ export default function LogisticaPage() {
   const [openSettingsModal, setOpenSettingsModal] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     warehouse_address: '',
+    warehouse_lat: '',
+    warehouse_lng: '',
     gasoline_price: '',
     diesel_price: ''
   });
@@ -125,13 +127,21 @@ export default function LogisticaPage() {
     setIsSaving(true);
     try {
       let coords = { lat: settings.warehouse_lat, lon: settings.warehouse_lng };
-      // Si cambia la direccion, geocodificamos de nuevo
-      if (settingsForm.warehouse_address !== settings.warehouse_address) {
+      
+      // Si el usuario ingresó manualmente coordenadas numéricas, las usamos. Si no, geocodificamos.
+      const manualLat = parseFloat(settingsForm.warehouse_lat);
+      const manualLng = parseFloat(settingsForm.warehouse_lng);
+      
+      if (!isNaN(manualLat) && !isNaN(manualLng) && manualLat !== 0 && manualLng !== 0) {
+        coords = { lat: manualLat, lon: manualLng };
+      } else if (settingsForm.warehouse_address !== settings.warehouse_address) {
         const newCoords = await geocodeAddress(settingsForm.warehouse_address);
         if (newCoords) {
           coords = newCoords;
         } else {
-          alert('No se pudieron encontrar las coordenadas de la dirección de la bodega.');
+          alert('No se pudieron encontrar las coordenadas automáticas. Por favor ingresa Latitud y Longitud manualmente.');
+          setIsSaving(false);
+          return;
         }
       }
 
@@ -562,6 +572,8 @@ export default function LogisticaPage() {
                     if(settings) {
                       setSettingsForm({
                         warehouse_address: settings.warehouse_address,
+                        warehouse_lat: settings.warehouse_lat?.toString() || '',
+                        warehouse_lng: settings.warehouse_lng?.toString() || '',
                         gasoline_price: settings.gasoline_price.toString(),
                         diesel_price: settings.diesel_price.toString()
                       });
@@ -662,6 +674,17 @@ export default function LogisticaPage() {
                   <Input required className="h-12 rounded-xl" value={settingsForm.warehouse_address} onChange={e => setSettingsForm({...settingsForm, warehouse_address: e.target.value})} />
                   <p className="text-xs text-slate-500">Escribe la dirección más completa posible para que el mapa la encuentre bien.</p>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Latitud (Opcional)</Label>
+                    <Input type="number" step="any" placeholder="Ej. 24.802" className="h-12 rounded-xl" value={settingsForm.warehouse_lat} onChange={e => setSettingsForm({...settingsForm, warehouse_lat: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Longitud (Opcional)</Label>
+                    <Input type="number" step="any" placeholder="Ej. -107.39" className="h-12 rounded-xl" value={settingsForm.warehouse_lng} onChange={e => setSettingsForm({...settingsForm, warehouse_lng: e.target.value})} />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">Si dejas Latitud y Longitud vacíos, el sistema intentará calcularlos automáticamente buscando la dirección.</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Precio Gasolina / L</Label>
