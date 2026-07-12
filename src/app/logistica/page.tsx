@@ -92,7 +92,7 @@ export default function LogisticaPage() {
       const [vehRes, setRes, rentRes] = await Promise.all([
         supabase.from('vehicles').select('*').order('name'),
         supabase.from('logistics_settings').select('*').limit(1).single(),
-        supabase.from('rentals').select('*, clients(name, phone)').in('status', ['Confirmada', 'Entregado']).not('address', 'is', null).order('event_date', { ascending: true })
+        supabase.from('rentals').select('*, clients(name, phone)').neq('address', '').not('address', 'is', null).order('event_date', { ascending: true })
       ]);
       if (setRes.error && setRes.error.code !== 'PGRST116') {
         console.error('Error fetching settings:', setRes.error);
@@ -200,11 +200,22 @@ export default function LogisticaPage() {
         autonomy_km_per_liter: parseFloat(vehicleForm.autonomy_km_per_liter)
       };
 
+      let saveError = null;
       if (editingVehicleId) {
-        await supabase.from('vehicles').update(payload).eq('id', editingVehicleId);
+        const { error } = await supabase.from('vehicles').update(payload).eq('id', editingVehicleId);
+        saveError = error;
       } else {
-        await supabase.from('vehicles').insert([payload]);
+        const { error } = await supabase.from('vehicles').insert([payload]);
+        saveError = error;
       }
+      
+      if (saveError) {
+        console.error('Vehicle Save Error:', saveError);
+        alert('Error al guardar vehículo: ' + saveError.message);
+        setIsSaving(false);
+        return;
+      }
+
       await fetchData();
       setOpenVehicleModal(false);
     } catch (error) {
