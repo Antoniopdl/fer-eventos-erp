@@ -133,7 +133,7 @@ export default function LogisticaPage() {
       
       if (!isNaN(manualLat) && !isNaN(manualLng) && manualLat !== 0 && manualLng !== 0) {
         coords = { lat: manualLat, lon: manualLng };
-      } else if (settingsForm.warehouse_address !== settings.warehouse_address) {
+      } else if (settingsForm.warehouse_address !== settings?.warehouse_address) {
         const newCoords = await geocodeAddress(settingsForm.warehouse_address);
         if (newCoords) {
           coords = newCoords;
