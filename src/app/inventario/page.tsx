@@ -263,6 +263,11 @@ export default function InventarioPage() {
     setOpenKitModal(true);
   };
 
+  const uniqueCategories = Array.from(new Set([
+    "Sillas", "Mesas", "Carpas", "Manteles", "Sobremanteles", "Decoración", "Luz y Sonido", "Varios",
+    ...inventory.map(item => item.category)
+  ])).sort();
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
       <div className="flex flex-col gap-4">
@@ -324,14 +329,9 @@ export default function InventarioPage() {
                           onChange={(e) => setItemFormData({...itemFormData, category: e.target.value})} 
                         />
                         <datalist id="category-options">
-                          <option value="Sillas" />
-                          <option value="Mesas" />
-                          <option value="Carpas" />
-                          <option value="Manteles" />
-                          <option value="Sobremanteles" />
-                          <option value="Decoración" />
-                          <option value="Luz y Sonido" />
-                          <option value="Varios" />
+                          {uniqueCategories.map(cat => (
+                            <option key={cat} value={cat} />
+                          ))}
                         </datalist>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
