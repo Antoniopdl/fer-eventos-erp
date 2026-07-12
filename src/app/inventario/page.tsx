@@ -47,6 +47,10 @@ export default function InventarioPage() {
   
   const [viewMode, setViewMode] = useState<'grid-large' | 'grid-small' | 'table'>('grid-large');
   
+  // Estado Filtros
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('Todas');
+  
   // Estado Formulario Categorías
   const [openCategoryEditModal, setOpenCategoryEditModal] = useState(false);
   const [openCategoryDeleteModal, setOpenCategoryDeleteModal] = useState(false);
@@ -308,10 +312,17 @@ export default function InventarioPage() {
     }
   };
 
-  const uniqueCategories = Array.from(new Set([
+  const existingCategories = Array.from(new Set(items.map(item => item.category))).sort();
+  const suggestedCategories = Array.from(new Set([
     "Sillas", "Mesas", "Carpas", "Manteles", "Sobremanteles", "Decoración", "Luz y Sonido", "Varios",
-    ...items.map(item => item.category)
+    ...existingCategories
   ])).sort();
+
+  const filteredItems = items.filter(item => {
+    const matchesCategory = categoryFilter === 'Todas' || item.category === categoryFilter;
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
@@ -336,9 +347,20 @@ export default function InventarioPage() {
         {/* -------------------- TAB: ARTICULOS SUELTOS -------------------- */}
         <TabsContent value="articulos" className="space-y-6 m-0">
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-              <Input type="search" placeholder="Buscar sillas, mesas..." className="pl-10 h-10 rounded-full bg-slate-100 border-transparent focus:bg-white" />
+            <div className="flex gap-2 flex-1 max-w-xl">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                <Input type="search" placeholder="Buscar sillas, mesas..." className="pl-10 h-10 rounded-full bg-slate-100 border-transparent focus:bg-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-[140px] sm:w-[180px] h-10 rounded-full bg-slate-100 border-transparent focus:bg-white">
+                  <SelectValue placeholder="Categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Todas">Todas</SelectItem>
+                  {existingCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex items-center justify-between gap-3">
@@ -375,7 +397,7 @@ export default function InventarioPage() {
                           onChange={(e) => setItemFormData({...itemFormData, category: e.target.value})} 
                         />
                         <datalist id="category-options">
-                          {uniqueCategories.map(cat => (
+                          {suggestedCategories.map(cat => (
                             <option key={cat} value={cat} />
                           ))}
                         </datalist>
@@ -413,19 +435,19 @@ export default function InventarioPage() {
 
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 text-slate-500"><Loader2 className="w-8 h-8 animate-spin mb-4 text-blue-500" /><p>Cargando inventario...</p></div>
-          ) : items.length === 0 ? (
+          ) : filteredItems.length === 0 ? (
             <div className="text-center py-20 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
               <Package2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <h3 className="text-lg font-medium text-slate-900">Sin artículos</h3>
-              <p className="text-slate-500 mb-4">Aún no hay mobiliario registrado.</p>
-              <Button onClick={() => setOpenItemModal(true)} variant="outline" className="rounded-full">Crear el primero</Button>
+              <p className="text-slate-500 mb-4">No se encontraron artículos con estos filtros.</p>
+              <Button onClick={() => { setCategoryFilter('Todas'); setSearchQuery(''); }} variant="outline" className="rounded-full">Limpiar filtros</Button>
             </div>
           ) : (
             <>
               {/* Grid Grande */}
               {viewMode === 'grid-large' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {items.map((item) => (
+                  {filteredItems.map((item) => (
                     <Card key={item.id} className="overflow-hidden border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl group">
                       <div className="relative aspect-square bg-slate-100">
                         {item.image_url ? (
@@ -450,7 +472,7 @@ export default function InventarioPage() {
               {/* Grid Pequeño */}
               {viewMode === 'grid-small' && (
                 <div className="flex flex-col gap-3">
-                  {items.map((item) => (
+                  {filteredItems.map((item) => (
                     <Card key={item.id} className="overflow-hidden border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl p-3 flex flex-row items-center gap-4">
                       <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl bg-slate-100 flex-shrink-0 overflow-hidden relative">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-slate-400"><ImageIcon className="w-8 h-8 opacity-50" /></div>}
@@ -483,7 +505,7 @@ export default function InventarioPage() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-slate-100">
-                        {items.map((item) => (
+                        {filteredItems.map((item) => (
                           <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center">
@@ -635,7 +657,7 @@ export default function InventarioPage() {
         {/* -------------------- TAB: CATEGORIAS -------------------- */}
         <TabsContent value="categorias" className="space-y-6 m-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {uniqueCategories.map(cat => {
+            {existingCategories.map(cat => {
               const catItems = items.filter(i => i.category === cat);
               return (
                 <Card key={cat} className="border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl overflow-hidden">
@@ -654,7 +676,7 @@ export default function InventarioPage() {
                       </Button>
                       <Button variant="destructive" size="icon-sm" className="w-9 h-9 rounded-full" onClick={() => {
                         setSelectedCategory(cat);
-                        setReassignCategoryName(uniqueCategories.find(c => c !== cat) || '');
+                        setReassignCategoryName(existingCategories.find(c => c !== cat) || '');
                         setOpenCategoryDeleteModal(true);
                       }}>
                         <Trash2 className="w-4 h-4" />
@@ -699,7 +721,7 @@ export default function InventarioPage() {
                   <Select value={reassignCategoryName} onValueChange={(val) => setReassignCategoryName(val || '')}>
                     <SelectTrigger className="h-12 rounded-xl"><SelectValue placeholder="Selecciona categoría destino" /></SelectTrigger>
                     <SelectContent>
-                      {uniqueCategories.filter(c => c !== selectedCategory).map(c => (
+                      {existingCategories.filter(c => c !== selectedCategory).map(c => (
                         <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
                     </SelectContent>
