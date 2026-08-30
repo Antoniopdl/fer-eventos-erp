@@ -640,7 +640,7 @@ export default function LogisticaPage() {
               </CardContent>
               {selectedUnassigned.length > 0 && (
                 <div className="p-3 border-t bg-slate-50 flex gap-2">
-                  <Select onValueChange={(val: string) => setAssignToVehicleId(val)}>
+                  <Select onValueChange={(val: string | null) => setAssignToVehicleId(val || '')}>
                     <SelectTrigger className="flex-1 bg-white h-10"><SelectValue placeholder="Elegir Vehículo" /></SelectTrigger>
                     <SelectContent>
                       {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
