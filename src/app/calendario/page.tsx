@@ -409,8 +409,9 @@ export default function CalendarioPage() {
                         <div className="mt-4 animate-in fade-in slide-in-from-top-2">
                           <MapPicker 
                             onLocationSelect={(lat, lng, address) => {
-                              // We format it as direct coordinates so Logistica can parse it instantly via Regex
-                              setClientData({...clientData, address: `${lat}, ${lng} (${address.split(',')[0]})`});
+                              const addressParts = address.split(',').map(p => p.trim());
+                              const displayLoc = addressParts.slice(0, 3).join(', ');
+                              setClientData({...clientData, address: `${lat}, ${lng} (${displayLoc})`});
                               setMapResults([]);
                               setShowMapPicker(false);
                             }} 
