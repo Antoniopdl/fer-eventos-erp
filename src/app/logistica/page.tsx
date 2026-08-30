@@ -386,7 +386,7 @@ export default function LogisticaPage() {
       }
 
       const coordsString = waypoints.map(w => `${w.lon},${w.lat}`).join(';');
-      const res = await fetch(`https://router.project-osrm.org/trip/v1/driving/${coordsString}?roundtrip=true&source=first&destination=last`);
+      const res = await fetch(`https://router.project-osrm.org/trip/v1/driving/${coordsString}?roundtrip=true&source=first`);
       const data = await res.json();
 
       if (data.code !== 'Ok' || !data.waypoints) throw new Error('OSRM API Error');
