@@ -14,6 +14,9 @@ import { format, addHours } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
+import dynamic from 'next/dynamic';
+
+const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false });
 
 type InventoryItem = { id: string; name: string; category: string; price_per_unit: number; total_quantity: number };
 type KitRequirement = { id: string; category: string; quantity: number; is_optional: boolean };
@@ -43,6 +46,7 @@ export default function CalendarioPage() {
   const [clientData, setClientData] = useState({ id: '', name: '', phone: '', address: '' });
   const [clientSearchActive, setClientSearchActive] = useState(false);
   const [eventDate, setEventDate] = useState<Date | undefined>(undefined);
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // Mapa Autocompletado
   const [mapResults, setMapResults] = useState<any[]>([]);
@@ -376,7 +380,12 @@ export default function CalendarioPage() {
                       </Popover>
                     </div>
                     <div className="space-y-2 relative">
-                      <Label className="text-slate-500">Dirección de Entrega</Label>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-slate-500">Dirección de Entrega</Label>
+                        <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 p-0" onClick={() => setShowMapPicker(!showMapPicker)}>
+                          {showMapPicker ? 'Ocultar Mapa' : '📍 Elegir en Mapa'}
+                        </Button>
+                      </div>
                       <div className="relative">
                         <MapPin className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
                         <Input className="pl-9 h-12 bg-slate-50" placeholder="Escribe para buscar calle..." value={clientData.address} onChange={e => handleAddressSearch(e.target.value)} />
@@ -393,6 +402,19 @@ export default function CalendarioPage() {
                               <span className="text-slate-700">{res.display_name}</span>
                             </div>
                           ))}
+                        </div>
+                      )}
+                      
+                      {showMapPicker && (
+                        <div className="mt-4 animate-in fade-in slide-in-from-top-2">
+                          <MapPicker 
+                            onLocationSelect={(lat, lng, address) => {
+                              // We format it as direct coordinates so Logistica can parse it instantly via Regex
+                              setClientData({...clientData, address: `${lat}, ${lng} (${address.split(',')[0]})`});
+                              setMapResults([]);
+                              setShowMapPicker(false);
+                            }} 
+                          />
                         </div>
                       )}
                     </div>
