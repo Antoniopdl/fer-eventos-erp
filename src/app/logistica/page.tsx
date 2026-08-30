@@ -9,8 +9,9 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Truck, MapPin, CheckCircle2, Loader2, Map, Settings, Calculator, Navigation, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Truck, MapPin, CheckCircle2, Loader2, Map, Settings, Calculator, Navigation, Plus, Pencil, Trash2, Package2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { cn } from '@/lib/utils';
 
 type Vehicle = {
   id: string;
@@ -37,6 +38,8 @@ type Rental = {
   delivery_address: string;
   status: string;
   total_amount: number;
+  delivery_vehicle_id: string | null;
+  delivery_route_order: number | null;
   clients: { full_name: string, phone: string };
 };
 
@@ -77,10 +80,16 @@ export default function LogisticaPage() {
     time_minutes: number
   } | null>(null);
 
-  // Rutas
-  const [selectedRentals, setSelectedRentals] = useState<string[]>([]);
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [optimizedRoute, setOptimizedRoute] = useState<{rental: Rental, distance: number}[] | null>(null);
+  // Rutas V2 (LIFO & VRP)
+  const [routeDate, setRouteDate] = useState<Date>(new Date());
+  const [selectedUnassigned, setSelectedUnassigned] = useState<string[]>([]);
+  const [assignToVehicleId, setAssignToVehicleId] = useState<string>('');
+  const [isOptimizing, setIsOptimizing] = useState<string | null>(null); // vehicle_id
+  
+  // LIFO Manifest Modal
+  const [openLifoModal, setOpenLifoModal] = useState(false);
+  const [lifoData, setLifoData] = useState<{ vehicle: Vehicle | null, itemsByStop: any[] }>({ vehicle: null, itemsByStop: [] });
+  const [isLoadingLifo, setIsLoadingLifo] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -320,36 +329,57 @@ export default function LogisticaPage() {
     }
   };
 
-  const handleOptimizeRoute = async () => {
+  const handleAssignVehicle = async (vehicleId: string) => {
+    if (selectedUnassigned.length === 0) return;
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ delivery_vehicle_id: vehicleId })
+        .in('id', selectedUnassigned);
+      if (error) throw error;
+      
+      setSelectedUnassigned([]);
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      alert("Error al asignar vehículo");
+    }
+  };
+
+  const handleUnassignOrder = async (orderId: string) => {
+    try {
+      const { error } = await supabase.from('orders').update({ delivery_vehicle_id: null, delivery_route_order: null }).eq('id', orderId);
+      if (error) throw error;
+      fetchData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleOptimizeRouteForVehicle = async (vehicleId: string, vehicleOrders: Rental[]) => {
     if (!settings?.warehouse_lat || !settings?.warehouse_lng) {
       alert('Debes configurar la dirección de tu bodega primero.');
       return;
     }
-    if (selectedRentals.length === 0) {
-      alert('Selecciona al menos una renta para la ruta.');
-      return;
-    }
+    if (vehicleOrders.length === 0) return;
 
-    setIsOptimizing(true);
-    setOptimizedRoute(null);
+    setIsOptimizing(vehicleId);
     try {
-      const selected = rentals.filter(r => selectedRentals.includes(r.id));
       const waypoints = [{ lon: settings.warehouse_lng, lat: settings.warehouse_lat, rental: null as Rental | null }];
 
-      // Geocode each rental with a 1s delay to respect Nominatim limits
-      for (const rent of selected) {
+      // Geocode each rental
+      for (const rent of vehicleOrders) {
         const coords = await geocodeAddress(rent.delivery_address);
         if (coords) {
           waypoints.push({ lon: coords.lon, lat: coords.lat, rental: rent });
         } else {
-          alert(`No se encontró dirección para el cliente ${rent.clients?.full_name || 'Desconocido'}. Se omitirá de la ruta.`);
+          alert(`No se encontró dirección para el cliente ${rent.clients?.full_name || 'Desconocido'}. Se omitirá.`);
         }
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 1000)); // Rate limit Nominatim
       }
 
       if (waypoints.length < 2) {
-        alert('No hay suficientes destinos válidos para trazar una ruta.');
-        setIsOptimizing(false);
+        setIsOptimizing(null);
         return;
       }
 
@@ -357,29 +387,74 @@ export default function LogisticaPage() {
       const res = await fetch(`https://router.project-osrm.org/trip/v1/driving/${coordsString}?roundtrip=true&source=first&destination=last`);
       const data = await res.json();
 
-      if (data.code !== 'Ok' || !data.waypoints) {
-        throw new Error('OSRM API Error');
-      }
+      if (data.code !== 'Ok' || !data.waypoints) throw new Error('OSRM API Error');
 
-      // data.waypoints has the same length as our input array.
       // waypoint_index represents its optimal position in the route.
-      const optimalOrder = new Array(waypoints.length);
-      data.waypoints.forEach((wp: any, originalIndex: number) => {
-        optimalOrder[wp.waypoint_index] = waypoints[originalIndex];
+      // Update DB with the optimal order
+      const updatePromises = data.waypoints.map((wp: any, originalIndex: number) => {
+        const wpData = waypoints[originalIndex];
+        if (wpData.rental) {
+          // wp.waypoint_index is the stop number (0 is warehouse)
+          return supabase.from('orders').update({ delivery_route_order: wp.waypoint_index }).eq('id', wpData.rental.id);
+        }
+        return Promise.resolve();
       });
 
-      // Filter out the warehouse (index 0) and map to the required state format
-      const finalRoute = optimalOrder.filter(w => w.rental !== null).map(w => ({
-        rental: w.rental as Rental,
-        distance: 0 // Simplification for now
-      }));
-
-      setOptimizedRoute(finalRoute);
+      await Promise.all(updatePromises);
+      await fetchData();
     } catch (error) {
       console.error(error);
       alert('Hubo un error calculando la ruta óptima.');
     } finally {
-      setIsOptimizing(false);
+      setIsOptimizing(null);
+    }
+  };
+
+  const handleOpenLifoManifest = async (vehicle: Vehicle, vehicleOrders: Rental[]) => {
+    if (vehicleOrders.length === 0) {
+      alert("No hay rentas asignadas a este vehículo hoy.");
+      return;
+    }
+    setIsLoadingLifo(true);
+    setLifoData({ vehicle, itemsByStop: [] });
+    setOpenLifoModal(true);
+
+    try {
+      // 1. Fetch order items for all these orders
+      const orderIds = vehicleOrders.map(o => o.id);
+      const { data: itemsData, error } = await supabase
+        .from('order_items')
+        .select('order_id, quantity, inventory(name, category)')
+        .in('order_id', orderIds);
+      
+      if (error) throw error;
+
+      // 2. Group by Stop (LIFO - Highest delivery_route_order first)
+      const sortedOrders = [...vehicleOrders].sort((a, b) => (b.delivery_route_order || 0) - (a.delivery_route_order || 0));
+      
+      const itemsByStop = sortedOrders.map(order => {
+        const oItems = itemsData?.filter(i => i.order_id === order.id) || [];
+        // Sum similar items
+        const aggregated: Record<string, number> = {};
+        oItems.forEach(i => {
+          const name = i.inventory?.name || 'Mobiliario';
+          aggregated[name] = (aggregated[name] || 0) + i.quantity;
+        });
+
+        return {
+          stopNumber: order.delivery_route_order || 0,
+          clientName: order.clients?.full_name,
+          address: order.delivery_address,
+          items: Object.entries(aggregated).map(([name, qty]) => ({ name, qty }))
+        };
+      });
+
+      setLifoData({ vehicle, itemsByStop });
+    } catch (e) {
+      console.error(e);
+      alert("Error cargando el manifiesto");
+    } finally {
+      setIsLoadingLifo(false);
     }
   };
 
@@ -518,103 +593,130 @@ export default function LogisticaPage() {
 
         {/* ----------------- TAB: RUTAS ----------------- */}
         <TabsContent value="rutas" className="space-y-6 m-0">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl">
-              <CardHeader className="bg-slate-50 border-b rounded-t-2xl">
-                <CardTitle>Eventos a Entregar</CardTitle>
-                <CardDescription>Selecciona los eventos para calcular la ruta más rápida.</CardDescription>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">Armador de Rutas</h2>
+              <p className="text-sm text-slate-500">Planifica las entregas del día y asigna vehículos.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="font-bold">Fecha:</Label>
+              <Input type="date" className="w-auto bg-slate-50 border-slate-200" value={routeDate.toISOString().split('T')[0]} onChange={(e) => setRouteDate(new Date(e.target.value + 'T12:00:00'))} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* SIN ASIGNAR */}
+            <Card className="xl:col-span-1 border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl flex flex-col max-h-[600px]">
+              <CardHeader className="bg-slate-50 border-b rounded-t-2xl py-4">
+                <CardTitle className="text-base flex justify-between items-center">
+                  Pendientes de Asignar
+                  <Badge variant="secondary">{rentals.filter(r => r.event_date === routeDate.toISOString().split('T')[0] && !r.delivery_vehicle_id).length}</Badge>
+                </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="max-h-[400px] overflow-y-auto divide-y">
-                  {rentals.length === 0 ? (
-                    <div className="p-8 text-center text-slate-500">No hay rentas con direcciones válidas.</div>
+              <CardContent className="p-0 overflow-y-auto flex-1">
+                <div className="divide-y">
+                  {rentals.filter(r => r.event_date === routeDate.toISOString().split('T')[0] && !r.delivery_vehicle_id).length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 text-sm">No hay rentas pendientes para este día.</div>
                   ) : (
-                    rentals.map(rental => (
-                      <div key={rental.id} className="p-4 flex items-start gap-4 hover:bg-slate-50">
+                    rentals.filter(r => r.event_date === routeDate.toISOString().split('T')[0] && !r.delivery_vehicle_id).map(rental => (
+                      <div key={rental.id} className="p-3 flex items-start gap-3 hover:bg-slate-50">
                         <input 
                           type="checkbox" 
-                          className="mt-1 w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          checked={selectedRentals.includes(rental.id)}
+                          className="mt-1 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          checked={selectedUnassigned.includes(rental.id)}
                           onChange={(e) => {
-                            if(e.target.checked) setSelectedRentals([...selectedRentals, rental.id]);
-                            else setSelectedRentals(selectedRentals.filter(id => id !== rental.id));
+                            if(e.target.checked) setSelectedUnassigned([...selectedUnassigned, rental.id]);
+                            else setSelectedUnassigned(selectedUnassigned.filter(id => id !== rental.id));
                           }}
                         />
-                        <div>
-                          <p className="font-bold text-slate-800">{rental.clients?.full_name || 'Cliente'}</p>
-                          <p className="text-sm text-slate-500 flex items-center gap-1 mt-1"><MapPin className="w-3 h-3"/> {rental.delivery_address}</p>
-                          <p className="text-xs text-blue-600 font-medium mt-1">
-                            {new Date(rental.event_date).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'short' })}
-                          </p>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm text-slate-800 truncate">{rental.clients?.full_name}</p>
+                          <p className="text-xs text-slate-500 truncate mt-0.5"><MapPin className="w-3 h-3 inline mr-1"/>{rental.delivery_address}</p>
                         </div>
                       </div>
                     ))
                   )}
                 </div>
-                <div className="p-4 border-t bg-slate-50 rounded-b-2xl">
-                  <Button 
-                    onClick={handleOptimizeRoute} 
-                    disabled={isOptimizing || selectedRentals.length === 0} 
-                    className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
-                  >
-                    {isOptimizing ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <Navigation className="w-5 h-5 mr-2" />}
-                    {isOptimizing ? 'Calculando Ruta...' : `Optimizar Ruta para ${selectedRentals.length} destinos`}
+              </CardContent>
+              {selectedUnassigned.length > 0 && (
+                <div className="p-3 border-t bg-slate-50 flex gap-2">
+                  <Select onValueChange={setAssignToVehicleId}>
+                    <SelectTrigger className="flex-1 bg-white h-10"><SelectValue placeholder="Elegir Vehículo" /></SelectTrigger>
+                    <SelectContent>
+                      {vehicles.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button disabled={!assignToVehicleId} className="h-10 bg-blue-600 hover:bg-blue-700" onClick={() => handleAssignVehicle(assignToVehicleId)}>
+                    Asignar
                   </Button>
                 </div>
-              </CardContent>
+              )}
             </Card>
 
-            <Card className="border-0 shadow-sm ring-1 ring-blue-200 rounded-2xl bg-blue-50/30 overflow-hidden">
-              <CardHeader className="bg-blue-600 text-white">
-                <CardTitle className="flex items-center gap-2"><Map className="w-5 h-5"/> Ruta Sugerida</CardTitle>
-                <CardDescription className="text-blue-100">Orden óptimo calculado por Inteligencia Artificial (OSRM).</CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                {!optimizedRoute ? (
-                  <div className="p-12 text-center">
-                    <Map className="w-12 h-12 text-blue-200 mx-auto mb-3" />
-                    <p className="text-slate-500 font-medium">Selecciona eventos y calcula la ruta.</p>
-                  </div>
-                ) : (
-                  <div className="p-6 relative">
-                    <div className="absolute top-10 bottom-10 left-[43px] w-0.5 bg-blue-200"></div>
-                    <div className="space-y-6 relative">
-                      <div className="flex gap-4 items-start">
-                        <div className="w-10 h-10 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold shadow-md z-10 flex-shrink-0">
-                          B
-                        </div>
-                        <div className="pt-2">
-                          <p className="font-bold text-slate-800">Bodega (Inicio)</p>
-                          <p className="text-sm text-slate-500">{settings?.warehouse_address}</p>
-                        </div>
+            {/* VEHICULOS */}
+            <div className="xl:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {vehicles.map(vehicle => {
+                const vehicleOrders = rentals.filter(r => r.event_date === routeDate.toISOString().split('T')[0] && r.delivery_vehicle_id === vehicle.id);
+                // Sort by delivery order if optimized
+                const isOptimized = vehicleOrders.length > 0 && vehicleOrders.every(o => o.delivery_route_order !== null);
+                if (isOptimized) {
+                  vehicleOrders.sort((a, b) => (a.delivery_route_order || 0) - (b.delivery_route_order || 0));
+                }
+
+                return (
+                  <Card key={vehicle.id} className="border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl flex flex-col h-fit">
+                    <CardHeader className="bg-slate-800 text-white rounded-t-2xl py-3 px-4 flex flex-row items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Truck className="w-5 h-5 text-blue-300" />
+                        <CardTitle className="text-sm">{vehicle.name}</CardTitle>
                       </div>
+                      <Badge className="bg-slate-700 hover:bg-slate-700 text-white border-0">{vehicleOrders.length} Paradas</Badge>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {vehicleOrders.length === 0 ? (
+                        <div className="p-6 text-center text-slate-400 text-sm">Camioneta sin carga hoy.</div>
+                      ) : (
+                        <div className="divide-y max-h-[300px] overflow-y-auto">
+                          {vehicleOrders.map((order, idx) => (
+                            <div key={order.id} className="p-3 text-sm flex items-start gap-3">
+                              <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 flex-shrink-0">
+                                {isOptimized ? order.delivery_route_order : (idx + 1)}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-bold text-slate-800">{order.clients?.full_name}</p>
+                                <p className="text-xs text-slate-500 truncate pr-2">{order.delivery_address}</p>
+                              </div>
+                              <Button variant="ghost" size="icon-sm" className="h-6 w-6 text-slate-400 hover:text-red-500 hover:bg-red-50" onClick={() => handleUnassignOrder(order.id)}><Trash2 className="w-3 h-3"/></Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       
-                      {optimizedRoute.map((node, index) => (
-                        <div key={node.rental.id} className="flex gap-4 items-start">
-                          <div className="w-10 h-10 rounded-full bg-white border-2 border-blue-500 text-blue-600 flex items-center justify-center font-bold shadow-sm z-10 flex-shrink-0">
-                            {index + 1}
-                          </div>
-                          <div className="pt-1">
-                            <p className="font-bold text-blue-700">{node.rental.clients?.full_name}</p>
-                            <p className="text-sm text-slate-600">{node.rental.delivery_address}</p>
-                            <Badge variant="outline" className="mt-2 text-xs bg-white">{new Date(node.rental.event_date).toLocaleDateString()}</Badge>
-                          </div>
+                      {vehicleOrders.length > 0 && (
+                        <div className="p-3 border-t bg-slate-50 flex flex-col gap-2 rounded-b-2xl">
+                          <Button 
+                            variant="outline" 
+                            className={cn("w-full h-9", isOptimized ? "border-green-200 text-green-700 bg-green-50" : "border-slate-300")}
+                            onClick={() => handleOptimizeRouteForVehicle(vehicle.id, vehicleOrders)}
+                            disabled={isOptimizing === vehicle.id}
+                          >
+                            {isOptimizing === vehicle.id ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : (isOptimized ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Navigation className="w-4 h-4 mr-2" />)}
+                            {isOptimized ? 'Ruta Optimizada' : 'Optimizar Ruta OSRM'}
+                          </Button>
+                          <Button 
+                            className="w-full h-9 bg-slate-900 text-white"
+                            onClick={() => handleOpenLifoManifest(vehicle, vehicleOrders)}
+                            disabled={!isOptimized}
+                          >
+                            <Package2 className="w-4 h-4 mr-2" /> Hoja de Carga (LIFO)
+                          </Button>
                         </div>
-                      ))}
-
-                      <div className="flex gap-4 items-start">
-                        <div className="w-10 h-10 rounded-full bg-slate-200 text-slate-500 border border-slate-300 flex items-center justify-center font-bold shadow-sm z-10 flex-shrink-0">
-                          <CheckCircle2 className="w-5 h-5"/>
-                        </div>
-                        <div className="pt-2">
-                          <p className="font-bold text-slate-500">Regreso a Bodega</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           </div>
         </TabsContent>
 
@@ -808,7 +910,54 @@ export default function LogisticaPage() {
                 </Button>
               </form>
             </DialogContent>
+          {/* Modal LIFO Manifest */}
+          <Dialog open={openLifoModal} onOpenChange={setOpenLifoModal}>
+            <DialogContent className="sm:max-w-2xl bg-white rounded-2xl p-6 h-[80vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Package2 className="w-5 h-5 text-blue-600" />
+                  Manifiesto de Carga (LIFO)
+                </DialogTitle>
+                <DialogDescription>Cargar al fondo los artículos de la última parada.</DialogDescription>
+              </DialogHeader>
+              
+              <div className="flex-1 overflow-y-auto mt-4 space-y-4">
+                {isLoadingLifo ? (
+                  <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+                ) : (
+                  lifoData.itemsByStop.map((stop, idx) => (
+                    <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
+                      <div className="bg-slate-100 p-3 border-b flex justify-between items-center">
+                        <div>
+                          <Badge variant="outline" className="mr-2 bg-white">Parada #{stop.stopNumber}</Badge>
+                          <span className="font-bold text-slate-800">{stop.clientName}</span>
+                        </div>
+                        <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded uppercase">
+                          {idx === 0 ? 'Cargar al Fondo (Último destino)' : (idx === lifoData.itemsByStop.length - 1 ? 'Cargar en la Puerta (Primer destino)' : 'Cargar en medio')}
+                        </span>
+                      </div>
+                      <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {stop.items.map((item: any, i: number) => (
+                          <div key={i} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border">
+                            <span className="text-sm font-medium text-slate-700 truncate pr-2">{item.name}</span>
+                            <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-xs">x{item.qty}</span>
+                          </div>
+                        ))}
+                        {stop.items.length === 0 && (
+                          <p className="text-sm text-slate-400 col-span-full">No hay artículos registrados para esta renta.</p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              
+              <div className="pt-4 border-t mt-4 flex justify-end">
+                <Button variant="outline" onClick={() => window.print()} className="gap-2">Imprimir Hoja</Button>
+              </div>
+            </DialogContent>
           </Dialog>
+
         </TabsContent>
       </Tabs>
     </div>
