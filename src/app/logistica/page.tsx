@@ -437,7 +437,7 @@ export default function LogisticaPage() {
         // Sum similar items
         const aggregated: Record<string, number> = {};
         oItems.forEach(i => {
-          const name = i.inventory?.name || 'Mobiliario';
+          const name = (i.inventory as any)?.name || 'Mobiliario';
           aggregated[name] = (aggregated[name] || 0) + i.quantity;
         });
 
