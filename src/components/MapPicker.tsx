@@ -47,7 +47,7 @@ function LocationMarker({ onLocationSelect }: { onLocationSelect: (lat: number, 
 export default function MapPicker({ onLocationSelect, defaultAddress }: MapPickerProps) {
   return (
     <div className="h-[300px] w-full rounded-xl overflow-hidden border">
-      <MapContainer center={[24.805, -107.394]} zoom={13} style={{ height: '100%', width: '100%' }}>
+      <MapContainer center={[25.10972, -107.94472]} zoom={13} style={{ height: '100%', width: '100%' }}>
         <TileLayer
           attribution='&copy; OpenStreetMap'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
