@@ -41,12 +41,14 @@ type Rental = {
   delivery_vehicle_id: string | null;
   delivery_route_order: number | null;
   clients: { full_name: string, phone: string };
+  order_items?: { quantity: number, inventory: { name: string } }[];
 };
 
 export default function LogisticaPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [settings, setSettings] = useState<LogisticsSettings | null>(null);
   const [rentals, setRentals] = useState<Rental[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -101,7 +103,7 @@ export default function LogisticaPage() {
       const [vehRes, setRes, rentRes] = await Promise.all([
         supabase.from('vehicles').select('*').order('name'),
         supabase.from('logistics_settings').select('*').limit(1).single(),
-        supabase.from('orders').select('*, clients(full_name, phone)').neq('delivery_address', '').not('delivery_address', 'is', null).order('event_date', { ascending: true })
+        supabase.from('orders').select('*, clients(full_name, phone), order_items(quantity, inventory(name))').neq('delivery_address', '').not('delivery_address', 'is', null).order('event_date', { ascending: true })
       ]);
       if (setRes.error && setRes.error.code !== 'PGRST116') {
         console.error('Error fetching settings:', setRes.error);
@@ -677,18 +679,25 @@ export default function LogisticaPage() {
                         <div className="p-6 text-center text-slate-400 text-sm">Camioneta sin carga hoy.</div>
                       ) : (
                         <div className="divide-y max-h-[300px] overflow-y-auto">
-                          {vehicleOrders.map((order, idx) => (
-                            <div key={order.id} className="p-3 text-sm flex items-start gap-3">
-                              <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 flex-shrink-0">
-                                {isOptimized ? order.delivery_route_order : (idx + 1)}
+                          {vehicleOrders.map((order, idx) => {
+                            const itemsSummary = (order.order_items || [])
+                              .map(oi => `${oi.quantity}x ${oi.inventory?.name || 'Mobiliario'}`)
+                              .join(', ');
+
+                            return (
+                              <div key={order.id} className="p-3 text-sm flex items-start gap-3">
+                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 flex-shrink-0 mt-1">
+                                  {isOptimized ? order.delivery_route_order : (idx + 1)}
+                                </div>
+                                <div className="flex-1">
+                                  <p className="font-bold text-slate-800">{order.clients?.full_name}</p>
+                                  <p className="text-xs text-slate-600 font-medium leading-tight">{order.delivery_address}</p>
+                                  {itemsSummary && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{itemsSummary}</p>}
+                                </div>
+                                <Button variant="ghost" size="icon-sm" className="h-6 w-6 text-slate-400 hover:text-red-500 hover:bg-red-50" onClick={() => handleUnassignOrder(order.id)}><Trash2 className="w-3 h-3"/></Button>
                               </div>
-                              <div className="flex-1">
-                                <p className="font-bold text-slate-800">{order.clients?.full_name}</p>
-                                <p className="text-xs text-slate-500 truncate pr-2">{order.delivery_address}</p>
-                              </div>
-                              <Button variant="ghost" size="icon-sm" className="h-6 w-6 text-slate-400 hover:text-red-500 hover:bg-red-50" onClick={() => handleUnassignOrder(order.id)}><Trash2 className="w-3 h-3"/></Button>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                       
@@ -703,13 +712,28 @@ export default function LogisticaPage() {
                             {isOptimizing === vehicle.id ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : (isOptimized ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <Navigation className="w-4 h-4 mr-2" />)}
                             {isOptimized ? 'Ruta Optimizada' : 'Optimizar Ruta OSRM'}
                           </Button>
-                          <Button 
-                            className="w-full h-9 bg-slate-900 text-white"
-                            onClick={() => handleOpenLifoManifest(vehicle, vehicleOrders)}
-                            disabled={!isOptimized}
-                          >
-                            <Package2 className="w-4 h-4 mr-2" /> Hoja de Carga (LIFO)
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button 
+                              className="flex-1 h-9 bg-slate-900 text-white"
+                              onClick={() => handleOpenLifoManifest(vehicle, vehicleOrders)}
+                              disabled={!isOptimized}
+                            >
+                              <Package2 className="w-4 h-4 mr-2" /> LIFO
+                            </Button>
+                            <Button 
+                              variant="outline"
+                              className="flex-1 h-9 border-slate-300 text-slate-700"
+                              disabled={!isOptimized}
+                              onClick={() => {
+                                if (!settings?.warehouse_lat) return alert("Falta coordenada de bodega");
+                                const origin = `${settings.warehouse_lat},${settings.warehouse_lng}`;
+                                const waypoints = vehicleOrders.map(o => encodeURIComponent(o.delivery_address)).join('|');
+                                window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${origin}&waypoints=${waypoints}`, '_blank');
+                              }}
+                            >
+                              <Map className="w-4 h-4 mr-2" /> Mapa
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </CardContent>
@@ -912,56 +936,56 @@ export default function LogisticaPage() {
             </DialogContent>
           </Dialog>
 
-          {/* Modal LIFO Manifest */}
-          <Dialog open={openLifoModal} onOpenChange={setOpenLifoModal}>
-            <DialogContent className="sm:max-w-2xl bg-white rounded-2xl p-6 h-[80vh] flex flex-col">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Package2 className="w-5 h-5 text-blue-600" />
-                  Manifiesto de Carga (LIFO)
-                </DialogTitle>
-                <DialogDescription>Cargar al fondo los artículos de la última parada.</DialogDescription>
-              </DialogHeader>
-              
-              <div className="flex-1 overflow-y-auto mt-4 space-y-4">
-                {isLoadingLifo ? (
-                  <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
-                ) : (
-                  lifoData.itemsByStop.map((stop, idx) => (
-                    <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
-                      <div className="bg-slate-100 p-3 border-b flex justify-between items-center">
-                        <div>
-                          <Badge variant="outline" className="mr-2 bg-white">Parada #{stop.stopNumber}</Badge>
-                          <span className="font-bold text-slate-800">{stop.clientName}</span>
-                        </div>
-                        <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded uppercase">
-                          {idx === 0 ? 'Cargar al Fondo (Último destino)' : (idx === lifoData.itemsByStop.length - 1 ? 'Cargar en la Puerta (Primer destino)' : 'Cargar en medio')}
-                        </span>
-                      </div>
-                      <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {stop.items.map((item: any, i: number) => (
-                          <div key={i} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border">
-                            <span className="text-sm font-medium text-slate-700 truncate pr-2">{item.name}</span>
-                            <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-xs">x{item.qty}</span>
-                          </div>
-                        ))}
-                        {stop.items.length === 0 && (
-                          <p className="text-sm text-slate-400 col-span-full">No hay artículos registrados para esta renta.</p>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              
-              <div className="pt-4 border-t mt-4 flex justify-end">
-                <Button variant="outline" onClick={() => window.print()} className="gap-2">Imprimir Hoja</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-
         </TabsContent>
       </Tabs>
+
+      {/* Modal LIFO Manifest */}
+      <Dialog open={openLifoModal} onOpenChange={setOpenLifoModal}>
+        <DialogContent className="sm:max-w-2xl bg-white rounded-2xl p-6 h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package2 className="w-5 h-5 text-blue-600" />
+              Manifiesto de Carga (LIFO)
+            </DialogTitle>
+            <DialogDescription>Cargar al fondo los artículos de la última parada.</DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto mt-4 space-y-4">
+            {isLoadingLifo ? (
+              <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+            ) : (
+              lifoData.itemsByStop.map((stop, idx) => (
+                <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-100 p-3 border-b flex justify-between items-center">
+                    <div>
+                      <Badge variant="outline" className="mr-2 bg-white">Parada #{stop.stopNumber}</Badge>
+                      <span className="font-bold text-slate-800">{stop.clientName}</span>
+                    </div>
+                    <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded uppercase">
+                      {idx === 0 ? 'Cargar al Fondo (Último destino)' : (idx === lifoData.itemsByStop.length - 1 ? 'Cargar en la Puerta (Primer destino)' : 'Cargar en medio')}
+                    </span>
+                  </div>
+                  <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {stop.items.map((item: any, i: number) => (
+                      <div key={i} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border">
+                        <span className="text-sm font-medium text-slate-700 truncate pr-2">{item.name}</span>
+                        <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded text-xs">x{item.qty}</span>
+                      </div>
+                    ))}
+                    {stop.items.length === 0 && (
+                      <p className="text-sm text-slate-400 col-span-full">No hay artículos registrados para esta renta.</p>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          <div className="pt-4 border-t mt-4 flex justify-end">
+            <Button variant="outline" onClick={() => window.print()} className="gap-2">Imprimir Hoja</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
