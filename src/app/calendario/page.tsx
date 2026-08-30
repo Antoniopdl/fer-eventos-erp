@@ -19,7 +19,7 @@ type InventoryItem = { id: string; name: string; category: string; price_per_uni
 type KitRequirement = { id: string; category: string; quantity: number; is_optional: boolean };
 type Kit = { id: string; name: string; price: number; kit_requirements: KitRequirement[] };
 type OrderItem = { inventory: { name: string }, quantity: number, price_at_booking: number };
-type Order = { id: string; event_date: string; total_amount: number; delivery_address: string; client_id: string; client: { full_name: string, phone: string }; order_items?: OrderItem[] };
+type Order = { id: string; event_date: string; total_amount: number; delivery_address: string; client_id: string; client: { full_name: string, phone: string }; order_items?: OrderItem[]; payment_status?: string; payment_method?: string; amount_paid?: number; };
 
 type CartItem = { uid: string; type: 'single'; inventory_id: string; name: string; quantity: number; price: number; };
 type CartKit = { uid: string; type: 'kit'; kit_id: string; name: string; price: number; selections: { req_id: string; category: string; inventory_id: string; name: string; quantity: number }[]; };
@@ -59,6 +59,13 @@ export default function CalendarioPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [openOrderModal, setOpenOrderModal] = useState(false);
 
+  // V2: Pestañas y Cobranza
+  const [showPastEvents, setShowPastEvents] = useState(false);
+  const [openCobrarModal, setOpenCobrarModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia'>('efectivo');
+  const [amountReceived, setAmountReceived] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -68,8 +75,8 @@ export default function CalendarioPage() {
     try {
       const { data: ordersData } = await supabase
         .from('orders')
-        .select('id, event_date, total_amount, delivery_address, client_id, clients(full_name, phone)')
-        .order('event_date', { ascending: true });
+        .select('id, event_date, total_amount, delivery_address, client_id, payment_status, payment_method, amount_paid, clients(full_name, phone)')
+        .order('event_date', { ascending: !showPastEvents });
       if (ordersData) setOrders(ordersData.map((o: any) => ({ ...o, client: o.clients })));
 
       const { data: invData } = await supabase.from('inventory').select('id, name, category, price_per_unit, total_quantity');
@@ -258,6 +265,31 @@ export default function CalendarioPage() {
     link.setAttribute('download', `renta_${order.client.full_name.replace(' ', '_')}.ics`);
     document.body.appendChild(link);
     link.click();
+  };
+
+  const handleCobrar = async () => {
+    if (!selectedOrder) return;
+    setIsProcessingPayment(true);
+    try {
+      const payload = {
+        payment_status: 'paid',
+        payment_method: paymentMethod,
+        amount_paid: paymentMethod === 'efectivo' ? parseFloat(amountReceived) : selectedOrder.total_amount,
+        paid_at: new Date().toISOString()
+      };
+      
+      const { error } = await supabase.from('orders').update(payload).eq('id', selectedOrder.id);
+      if (error) throw error;
+      
+      setOpenCobrarModal(false);
+      setOpenOrderModal(false);
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      alert("Error al procesar el cobro.");
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   return (
@@ -547,17 +579,24 @@ export default function CalendarioPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         <Card className="lg:col-span-2 border-0 shadow-sm ring-1 ring-slate-200 rounded-2xl overflow-hidden">
-          <CardHeader className="bg-slate-50/50 border-b">
-            <CardTitle className="text-lg">Próximos Eventos</CardTitle>
+          <CardHeader className="bg-slate-50/50 border-b flex flex-row justify-between items-center py-4">
+            <CardTitle className="text-lg">Eventos</CardTitle>
+            <div className="flex bg-slate-200/50 p-1 rounded-xl">
+              <Button variant="ghost" size="sm" className={cn("rounded-lg px-4", !showPastEvents && "bg-white shadow-sm")} onClick={() => { setShowPastEvents(false); setTimeout(fetchData, 50); }}>Próximos</Button>
+              <Button variant="ghost" size="sm" className={cn("rounded-lg px-4", showPastEvents && "bg-white shadow-sm")} onClick={() => { setShowPastEvents(true); setTimeout(fetchData, 50); }}>Pasados</Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {loading ? (
               <div className="p-8 text-center text-slate-500"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></div>
             ) : orders.length === 0 ? (
-              <div className="p-12 text-center text-slate-500">No hay rentas programadas.</div>
+              <div className="p-12 text-center text-slate-500">No hay rentas en esta categoría.</div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {orders.map(order => (
+                {orders.filter(o => {
+                  const today = new Date().toISOString().split('T')[0];
+                  return showPastEvents ? o.event_date < today : o.event_date >= today;
+                }).map(order => (
                   <div key={order.id} className="p-5 flex justify-between items-center hover:bg-slate-50 transition cursor-pointer" onClick={() => fetchOrderDetails(order)}>
                     <div className="flex gap-4 items-center">
                       <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex flex-col items-center justify-center font-bold leading-tight">
@@ -565,7 +604,10 @@ export default function CalendarioPage() {
                         <span className="text-[10px] uppercase">{format(new Date(order.event_date + 'T12:00:00'), 'MMM', { locale: es })}</span>
                       </div>
                       <div>
-                        <h4 className="font-bold text-slate-800">{order.client.full_name}</h4>
+                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                          {order.client.full_name}
+                          {order.payment_status === 'paid' && <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full uppercase font-bold">Pagado</span>}
+                        </h4>
                         <p className="text-sm text-slate-500 truncate max-w-[200px]">{order.delivery_address}</p>
                       </div>
                     </div>
@@ -614,8 +656,87 @@ export default function CalendarioPage() {
                 </div>
               </div>
               <div className="p-4 bg-slate-50 border-t flex flex-wrap gap-2 justify-end">
+                {selectedOrder.payment_status !== 'paid' ? (
+                  <Button className="rounded-full bg-green-600 hover:bg-green-700 text-white mr-auto" onClick={() => setOpenCobrarModal(true)}>
+                    💳 Cobrar Renta
+                  </Button>
+                ) : (
+                  <div className="mr-auto flex items-center text-green-700 font-bold bg-green-100 px-4 py-2 rounded-full text-sm">
+                    <Check className="w-4 h-4 mr-1" /> Pagado ({selectedOrder.payment_method})
+                  </div>
+                )}
                 <Button variant="outline" className="rounded-full" onClick={() => generateICS(selectedOrder)}>Añadir a Apple Calendar</Button>
-                <Button variant="destructive" className="rounded-full" onClick={() => handleDeleteOrder(selectedOrder.id)}><Trash2 className="w-4 h-4 mr-2" /> Cancelar Renta</Button>
+                <Button variant="destructive" className="rounded-full" onClick={() => handleDeleteOrder(selectedOrder.id)}><Trash2 className="w-4 h-4 mr-2" /> Cancelar</Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Cobrar Renta */}
+      <Dialog open={openCobrarModal} onOpenChange={setOpenCobrarModal}>
+        <DialogContent className="sm:max-w-md bg-white p-0 rounded-2xl overflow-hidden">
+          {selectedOrder && (
+            <>
+              <div className="p-6 bg-green-50 border-b">
+                <h3 className="text-xl font-black text-green-900">Cobrar Renta</h3>
+                <p className="text-green-700 text-sm">Registra el pago del cliente {selectedOrder.client.full_name}</p>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="text-center">
+                  <p className="text-sm font-bold text-slate-500 uppercase">Total a Cobrar</p>
+                  <p className="text-5xl font-black text-slate-900 my-2">${selectedOrder.total_amount.toFixed(2)}</p>
+                </div>
+                
+                <div className="space-y-3">
+                  <Label className="text-slate-500 font-bold">Método de Pago</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div 
+                      className={cn("border-2 rounded-xl p-3 text-center cursor-pointer font-bold transition", paymentMethod === 'efectivo' ? "border-green-600 bg-green-50 text-green-700" : "border-slate-200 text-slate-500 hover:bg-slate-50")}
+                      onClick={() => setPaymentMethod('efectivo')}
+                    >
+                      💵 Efectivo
+                    </div>
+                    <div 
+                      className={cn("border-2 rounded-xl p-3 text-center cursor-pointer font-bold transition", paymentMethod === 'transferencia' ? "border-blue-600 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500 hover:bg-slate-50")}
+                      onClick={() => { setPaymentMethod('transferencia'); setAmountReceived(''); }}
+                    >
+                      📱 Transferencia
+                    </div>
+                  </div>
+                </div>
+
+                {paymentMethod === 'efectivo' && (
+                  <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                    <Label className="text-slate-500 font-bold">¿Con cuánto pagó el cliente?</Label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-3.5 text-slate-500 font-bold">$</span>
+                      <Input 
+                        type="number" 
+                        className="pl-8 h-12 text-lg font-bold bg-slate-50" 
+                        placeholder="Ej. 500" 
+                        value={amountReceived}
+                        onChange={(e) => setAmountReceived(e.target.value)}
+                      />
+                    </div>
+                    {parseFloat(amountReceived) >= selectedOrder.total_amount && (
+                      <div className="bg-slate-900 text-white p-4 rounded-xl text-center mt-4">
+                        <p className="text-sm text-slate-300">Dar de Cambio</p>
+                        <p className="text-3xl font-black">${(parseFloat(amountReceived) - selectedOrder.total_amount).toFixed(2)}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex gap-3">
+                <Button variant="outline" className="flex-1 rounded-xl h-12" onClick={() => setOpenCobrarModal(false)}>Cancelar</Button>
+                <Button 
+                  className="flex-1 rounded-xl h-12 bg-green-600 hover:bg-green-700 text-white" 
+                  disabled={isProcessingPayment || (paymentMethod === 'efectivo' && (parseFloat(amountReceived) < selectedOrder.total_amount || !amountReceived))}
+                  onClick={handleCobrar}
+                >
+                  {isProcessingPayment ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Confirmar Cobro'}
+                </Button>
               </div>
             </>
           )}
