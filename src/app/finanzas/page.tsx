@@ -1,120 +1,173 @@
-import React from 'react';
+"use client";
+
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { DollarSign, TrendingUp, TrendingDown, PiggyBank, Plus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { DollarSign, TrendingUp, TrendingDown, PiggyBank, Plus, Search, Calendar as CalendarIcon, RefreshCw } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+
+type PaidOrder = {
+  id: string;
+  total_amount: number;
+  payment_method: string;
+  paid_at: string;
+  client: { full_name: string };
+};
 
 export default function FinanzasPage() {
+  const [loading, setLoading] = useState(true);
+  const [todayOrders, setTodayOrders] = useState<PaidOrder[]>([]);
+  const [totalEfectivo, setTotalEfectivo] = useState(0);
+  const [totalTransferencia, setTotalTransferencia] = useState(0);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      // Obtenemos solo los pagados hoy
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, total_amount, payment_method, paid_at, client:clients(full_name)')
+        .eq('payment_status', 'paid')
+        .gte('paid_at', startOfDay.toISOString())
+        .lte('paid_at', endOfDay.toISOString())
+        .order('paid_at', { ascending: false });
+
+      if (error) throw error;
+      
+      const orders = data as any[];
+      setTodayOrders(orders);
+
+      const efectivo = orders.filter(o => o.payment_method === 'efectivo').reduce((sum, o) => sum + o.total_amount, 0);
+      const transf = orders.filter(o => o.payment_method === 'transferencia').reduce((sum, o) => sum + o.total_amount, 0);
+
+      setTotalEfectivo(efectivo);
+      setTotalTransferencia(transf);
+
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Finanzas y Ahorro</h1>
-          <p className="text-slate-500 dark:text-slate-400">
-            Control de ingresos en efectivo, gastos del negocio y metas de ahorro.
+          <h1 className="text-3xl font-bold tracking-tight">Corte de Caja Diario</h1>
+          <p className="text-slate-500">
+            Control de lo que han cobrado los repartidores el día de hoy, {format(new Date(), "d 'de' MMMM", { locale: es })}.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" className="w-full sm:w-auto gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950">
-            <Plus className="w-4 h-4" />
-            Registrar Gasto
-          </Button>
-          <Button className="w-full sm:w-auto gap-2 bg-green-600 hover:bg-green-700 text-white">
-            <Plus className="w-4 h-4" />
-            Ingreso (Efectivo)
-          </Button>
-        </div>
+        <Button variant="outline" onClick={fetchData} disabled={loading}>
+          <RefreshCw className={cn("w-4 h-4 mr-2", loading && "animate-spin")} /> Actualizar
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="border-0 shadow-sm ring-1 ring-green-200 bg-green-50/30">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Ingresos (Semana)</CardTitle>
-            <TrendingUp className="w-4 h-4 text-green-600" />
+            <CardTitle className="text-sm font-bold text-green-800 uppercase">Efectivo Físico</CardTitle>
+            <DollarSign className="w-5 h-5 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-50">$8,450.00</div>
+            <div className="text-4xl font-black text-green-700">${totalEfectivo.toFixed(2)}</div>
+            <p className="text-xs text-green-600/80 mt-1 font-medium">Billetes que te deben entregar</p>
           </CardContent>
         </Card>
-        <Card>
+        
+        <Card className="border-0 shadow-sm ring-1 ring-blue-200 bg-blue-50/30">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-500">Gastos (Semana)</CardTitle>
-            <TrendingDown className="w-4 h-4 text-red-600" />
+            <CardTitle className="text-sm font-bold text-blue-800 uppercase">Transferencias</CardTitle>
+            <TrendingUp className="w-5 h-5 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-50">$2,100.00</div>
-            <p className="text-xs text-slate-500 mt-1">Gasolina: $1,200 | Sueldos: $900</p>
+            <div className="text-4xl font-black text-blue-700">${totalTransferencia.toFixed(2)}</div>
+            <p className="text-xs text-blue-600/80 mt-1 font-medium">Revisar capturas en WhatsApp</p>
           </CardContent>
         </Card>
-        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+
+        <Card className="bg-slate-900 text-white border-0 shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400">Ganancia Neta</CardTitle>
-            <DollarSign className="w-4 h-4 text-blue-600" />
+            <CardTitle className="text-sm font-medium text-slate-300 uppercase">Ingreso Total (Hoy)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">$6,350.00</div>
+            <div className="text-4xl font-black">${(totalEfectivo + totalTransferencia).toFixed(2)}</div>
+            <p className="text-xs text-slate-400 mt-1 font-medium">{todayOrders.length} cobros procesados</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        {/* Savings Goal */}
-        <Card className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white border-none shadow-lg overflow-hidden relative">
-          <div className="absolute right-0 top-0 opacity-10">
-            <PiggyBank className="w-48 h-48 -mr-10 -mt-10" />
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        <Card className="lg:col-span-2 border-0 shadow-sm ring-1 ring-slate-200">
           <CardHeader>
-            <CardTitle className="text-blue-100 flex items-center gap-2">
-              <PiggyBank className="w-5 h-5" />
-              Caja de Ahorro / Reinversión
-            </CardTitle>
-            <CardDescription className="text-blue-200">
-              El sistema separa automáticamente el 15% de cada ganancia neta.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-5xl font-bold tracking-tight">$45,200</div>
-            <div className="mt-6">
-              <div className="flex justify-between text-sm text-blue-200 mb-2">
-                <span>Progreso hacia Meta</span>
-                <span>45% ($100,000)</span>
-              </div>
-              <div className="w-full bg-blue-900/50 rounded-full h-3">
-                <div className="bg-white rounded-full h-3 transition-all" style={{ width: '45%' }}></div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Recent Transactions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Transacciones Recientes</CardTitle>
+            <CardTitle>Desglose de Cobros (Hoy)</CardTitle>
+            <CardDescription>Eventos que han sido marcados como "Pagados" hoy.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {[
-                { type: 'income', title: 'Pago Restante - Boda Palmitas', amount: '+$3,500', date: 'Hoy, 14:30 hrs' },
-                { type: 'expense', title: 'Gasolina Nissan Redilas', amount: '-$800', date: 'Hoy, 08:15 hrs' },
-                { type: 'income', title: 'Anticipo - Bautizo Esperanza', amount: '+$1,200', date: 'Ayer' },
-                { type: 'expense', title: 'Reparación de 3 Sillas', amount: '-$300', date: 'Lun, 14 Sep' },
-              ].map((tx, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-900/50">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${tx.type === 'income' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
-                      {tx.type === 'income' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              {todayOrders.length === 0 && (
+                <div className="text-center p-8 bg-slate-50 rounded-2xl border-dashed border">
+                  <p className="text-slate-500">Ningún repartidor ha procesado cobros hoy.</p>
+                </div>
+              )}
+              {todayOrders.map((order, i) => (
+                <div key={order.id} className="flex items-center justify-between p-4 rounded-xl border border-slate-100 bg-white hover:bg-slate-50 shadow-sm">
+                  <div className="flex items-center gap-4">
+                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg", 
+                      order.payment_method === 'efectivo' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                    )}>
+                      {order.payment_method === 'efectivo' ? '$' : 'T'}
                     </div>
                     <div>
-                      <p className="font-medium text-sm">{tx.title}</p>
-                      <p className="text-xs text-slate-500">{tx.date}</p>
+                      <p className="font-bold text-slate-800">{order.client?.full_name}</p>
+                      <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                        <CalendarIcon className="w-3 h-3" /> {format(new Date(order.paid_at), "hh:mm a")}
+                      </p>
                     </div>
                   </div>
-                  <div className={`font-semibold ${tx.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                    {tx.amount}
+                  <div className="text-right">
+                    <p className={cn("font-black text-lg", order.payment_method === 'efectivo' ? 'text-green-600' : 'text-blue-600')}>
+                      ${order.total_amount.toFixed(2)}
+                    </p>
+                    <Badge variant="outline" className="mt-1 text-[10px] uppercase">{order.payment_method}</Badge>
                   </div>
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Savings Goal */}
+        <Card className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white border-none shadow-lg overflow-hidden relative h-fit">
+          <div className="absolute right-0 top-0 opacity-10">
+            <PiggyBank className="w-48 h-48 -mr-10 -mt-10" />
+          </div>
+          <CardHeader>
+            <CardTitle className="text-indigo-100 flex items-center gap-2">
+              <PiggyBank className="w-5 h-5" />
+              Caja de Ahorro
+            </CardTitle>
+            <CardDescription className="text-indigo-200">
+              Sugerencia de ahorro del 15% del total cobrado hoy para el negocio.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-5xl font-bold tracking-tight">${((totalEfectivo + totalTransferencia) * 0.15).toFixed(2)}</div>
+            <p className="text-sm text-indigo-200 mt-4">Al separar esta cantidad diaria, aseguras el crecimiento y mantenimiento del mobiliario.</p>
           </CardContent>
         </Card>
       </div>
