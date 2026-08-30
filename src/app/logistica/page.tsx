@@ -727,7 +727,10 @@ export default function LogisticaPage() {
                               onClick={() => {
                                 if (!settings?.warehouse_lat) return alert("Falta coordenada de bodega");
                                 const origin = `${settings.warehouse_lat},${settings.warehouse_lng}`;
-                                const waypoints = vehicleOrders.map(o => encodeURIComponent(o.delivery_address)).join('|');
+                                const waypoints = vehicleOrders.map(o => {
+                                  const match = o.delivery_address.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+                                  return match ? `${match[1]},${match[2]}` : encodeURIComponent(o.delivery_address);
+                                }).join('|');
                                 window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${origin}&waypoints=${waypoints}`, '_blank');
                               }}
                             >
