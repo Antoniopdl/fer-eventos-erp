@@ -70,6 +70,10 @@ export default function CalendarioPage() {
   const [amountReceived, setAmountReceived] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
+  // Edición de Rentas
+  const [openEditOrderModal, setOpenEditOrderModal] = useState(false);
+  const [editOrderData, setEditOrderData] = useState<{ id: string, address: string, date: Date | undefined, isSubmitting: boolean }>({ id: '', address: '', date: undefined, isSubmitting: false });
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -241,6 +245,36 @@ export default function CalendarioPage() {
         setOpenOrderModal(false);
         fetchData();
       }
+    }
+  };
+
+  const openEditOrder = (order: Order) => {
+    setEditOrderData({
+      id: order.id,
+      address: order.delivery_address,
+      date: new Date(order.event_date + 'T12:00:00'),
+      isSubmitting: false
+    });
+    setOpenOrderModal(false);
+    setOpenEditOrderModal(true);
+  };
+
+  const handleSaveEditedOrder = async () => {
+    if (!editOrderData.date) return;
+    setEditOrderData({ ...editOrderData, isSubmitting: true });
+    
+    const { error } = await supabase.from('orders').update({
+      event_date: editOrderData.date.toISOString().split('T')[0],
+      delivery_address: editOrderData.address
+    }).eq('id', editOrderData.id);
+
+    setEditOrderData({ ...editOrderData, isSubmitting: false });
+    
+    if (error) {
+      alert("Error al actualizar: " + error.message);
+    } else {
+      setOpenEditOrderModal(false);
+      fetchData();
     }
   };
 
@@ -662,6 +696,7 @@ export default function CalendarioPage() {
                   <p className="text-slate-500 text-sm flex items-center gap-1"><CalendarIcon className="w-4 h-4" /> {format(new Date(selectedOrder.event_date + 'T12:00:00'), 'PPP', { locale: es })}</p>
                   <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin className="w-4 h-4" /> {selectedOrder.delivery_address}</p>
                 </div>
+                <Button variant="outline" size="sm" onClick={() => openEditOrder(selectedOrder)}>Editar</Button>
               </div>
               <div className="p-6 max-h-[50vh] overflow-y-auto">
                 <h4 className="font-bold text-slate-800 mb-3">Mobiliario a Entregar</h4>
@@ -693,6 +728,43 @@ export default function CalendarioPage() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Editar Renta */}
+      <Dialog open={openEditOrderModal} onOpenChange={setOpenEditOrderModal}>
+        <DialogContent className="sm:max-w-md bg-white rounded-2xl p-6">
+          <DialogTitle>Editar Renta</DialogTitle>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label>Fecha del Evento</Label>
+              <Popover>
+                <PopoverTrigger render={
+                  <Button variant="outline" className="w-full h-12 justify-start text-left font-normal bg-slate-50">
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {editOrderData.date ? format(editOrderData.date, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
+                  </Button>
+                } />
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={editOrderData.date} onSelect={d => setEditOrderData({...editOrderData, date: d})} locale={es} />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label>Dirección de Entrega</Label>
+              <Input 
+                className="h-12 bg-slate-50" 
+                value={editOrderData.address} 
+                onChange={e => setEditOrderData({...editOrderData, address: e.target.value})} 
+              />
+            </div>
+            <div className="pt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setOpenEditOrderModal(false)}>Cancelar</Button>
+              <Button onClick={handleSaveEditedOrder} disabled={editOrderData.isSubmitting} className="bg-blue-600 text-white">
+                {editOrderData.isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null} Guardar
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
