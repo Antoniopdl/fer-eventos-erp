@@ -910,6 +910,8 @@ export default function LogisticaPage() {
                 </Button>
               </form>
             </DialogContent>
+          </Dialog>
+
           {/* Modal LIFO Manifest */}
           <Dialog open={openLifoModal} onOpenChange={setOpenLifoModal}>
             <DialogContent className="sm:max-w-2xl bg-white rounded-2xl p-6 h-[80vh] flex flex-col">
